@@ -2,6 +2,7 @@
 
 -module(game).
 -export([start/1, execute/2, run/1]).
+-export([check_equal/2]).
 
 % Start a process to execute an action
 start(State) ->
@@ -26,8 +27,8 @@ run(State) ->
             Pid ! {received, maps:merge(State, #{Position => Value})};
         {Pid, {state, Map}} ->
             Pid ! {received, Map};
-        {Pid, {check, Map}} ->
-            Win = check(Map),
+        {Pid, {check, {Map, Last_Position}}} ->
+            Win = check(Map, Last_Position),
             Pid ! Win,
             {Win, Map};
         {Pid, _} ->
@@ -36,7 +37,25 @@ run(State) ->
     run(New_State).
 
 
-check(Map) -> false.
+check(_, Last_Position) when not is_integer(Last_Position) ->
+	{fail, not_an_int};
+check(Map, _Last_Position) when map_size(Map) == 0 ->
+	false;
+check(Map, Last_Position) ->
+	Row = (Last_Position -1) div 3,
+	Col = (Last_Position - 1) rem 3,
+	Case1 = check_equal(Map, [Last_Position, ((Col + 1)rem 3) + (Row * 3) + 1, ((Col + 2)rem 3) + (Row * 3) + 1]),
+	Case2 = check_equal(Map, [Last_Position, (Col + ((Row + 1)rem 3) * 3) + 1, (Col + ((Row + 2)rem 3) * 3) + 1]),
+	Case3 = check_equal(Map, [Last_Position, ((Col + 1)rem 3) + (((Row + 1)rem 3) * 3) + 1, ((Col + 2)rem 3) + (((Row + 2)rem 3) * 3) + 1]),
+	Case4 = check_equal(Map, [Last_Position, ((Col + 2)rem 3) + (((Row + 1)rem 3) * 3) + 1, ((Col + 1)rem 3) + (((Row + 2)rem 3) * 3) + 1]),
+       	Case1 or Case2 or Case3 or Case4.
+
+check_equal(Map, [H|Positions]) ->
+	Comparison = fun(Position2, {Is_Equal, Value1}) ->
+		Value2 = maps:get(Position2, Map, not_found),
+		{(Is_Equal) and (Value1 == Value2), Value2} end,
+	{Is_Equal, _} = lists:foldl(Comparison, {true, maps:get(H, Map, not_found)}, Positions),
+	Is_Equal.	
 
 
 -ifdef(EUNIT).
@@ -97,6 +116,12 @@ state_test_() ->
 }.
 
 
+check_equal_test_() ->
+   [
+     ?_assert(check_equal(#{1=>x, 2=>x, 3=>x}, [1,2,3]))
+   ].
+
+
 check_test_() ->
 {setup,
     fun() -> % runs before test.
@@ -109,18 +134,32 @@ check_test_() ->
     end,
 
     [
-      ?_assert(execute(check_tester, {check, #{1 => x, 2 => x, 3 => x}})),
-      ?_assert(execute(check_tester, {check, #{4 => x, 5 => x, 6 => x}})),
-      ?_assert(execute(check_tester, {check, #{7 => x, 8 => x, 9 => x}})),
+      ?_assert(execute(check_tester, {check, {#{1 => x, 2 => x, 3 => x}, 1}})),
+      ?_assert(execute(check_tester, {check, {#{4 => x, 5 => x, 6 => x}, 5}})),
+      ?_assert(execute(check_tester, {check, {#{7 => x, 8 => x, 9 => x}, 9}})),
 
-      ?_assert(execute(check_tester, {check, #{1 => x, 4 => x, 7 => x}})),
-      ?_assert(execute(check_tester, {check, #{2 => x, 5 => x, 8 => x}})),
-      ?_assert(execute(check_tester, {check, #{3 => x, 6 => x, 9 => x}})),
+      ?_assert(execute(check_tester, {check, {#{1 => x, 4 => x, 7 => x}, 1}})),
+      ?_assert(execute(check_tester, {check, {#{2 => x, 5 => x, 8 => x}, 5}})),
+      ?_assert(execute(check_tester, {check, {#{3 => x, 6 => x, 9 => x}, 9}})),
 
-      ?_assert(execute(check_tester, {check, #{1 => x, 5 => x, 9 => x}})),
-      ?_assert(execute(check_tester, {check, #{3 => x, 5 => x, 7 => x}})),
+      ?_assert(execute(check_tester, {check, {#{1 => x, 5 => x, 9 => x}, 5}})),
+      ?_assert(execute(check_tester, {check, {#{3 => x, 5 => x, 7 => x}, 5}})),
 
-      ?_assertNot(execute(check_tester, {check, #{}}))
+
+      ?_assertNot(execute(check_tester, {check, {#{1 => o, 2 => x, 3 => x}, 1}})),
+      ?_assertNot(execute(check_tester, {check, {#{4 => x, 5 => o, 6 => x}, 5}})),
+      ?_assertNot(execute(check_tester, {check, {#{7 => x, 8 => x, 9 => o}, 9}})),
+
+      ?_assertNot(execute(check_tester, {check, {#{1 => o, 4 => x, 7 => x}, 1}})),
+      ?_assertNot(execute(check_tester, {check, {#{2 => x, 5 => o, 8 => x}, 5}})),
+      ?_assertNot(execute(check_tester, {check, {#{3 => x, 6 => x, 9 => o}, 9}})),
+
+      ?_assertNot(execute(check_tester, {check, {#{1 => o, 5 => x, 9 => x}, 5}})),
+      ?_assertNot(execute(check_tester, {check, {#{3 => x, 5 => x, 7 => o}, 5}})),
+
+
+      ?_assertNot(execute(check_tester, {check, {#{}, 0}})),
+      ?_assertEqual({fail, not_an_int}, execute(check_tester, {check, {#{}, something}}))
 
     ]
 }.
