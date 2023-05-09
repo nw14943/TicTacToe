@@ -3,10 +3,21 @@
 -module(game).
 -export([start/1, execute/2, run/1]).
 -export([check_equal/2]).
+-export([place/3, display/1]).
+
+place(Pid, Value, Position) ->
+    execute(Pid, {place, {Value, Position}}),
+    display(Pid),
+    Win = check(Pid, {check, Position}).
+
+display(Pid) ->
+    execute(Pid, display).
 
 % Start a process to execute an action
-start(State) ->
-    spawn(?MODULE,run, [State]).
+start() ->
+    spawn(?MODULE,run, [#{}]).
+start(Name) ->
+    register(Name, start()).
 
 % Execute on action on a process. (Action is a Message)
 % The client function.
@@ -27,18 +38,36 @@ run(State) ->
             Pid ! {received, maps:merge(State, #{Position => Value})};
         {Pid, {state, Map}} ->
             Pid ! {received, Map};
-        {Pid, {check, {Map, Last_Position}}} ->
-            Win = check(Map, Last_Position),
-            Pid ! Win,
-            {Win, Map};
+        {Pid, {check, Last_Position}} ->
+            Win = check(State, Last_Position),
+            Pid ! {Win, maps:get(Last_Position, State)},
+            {Win, State};
+	{Pid, display} ->
+	    %E = ' ',
+	    io:format("+-+-+-+~n"),
+	    io:format("|~p|~p|~p|~n", [maps:get(1, State, 1), maps:get(2, State, 2), maps:get(3, State, 3)]),
+	    io:format("+-+-+-+\n"),
+	    io:format("|~p|~p|~p|~n", [maps:get(4, State, 4), maps:get(5, State, 5), maps:get(6, State, 6)]),
+	    io:format("+-+-+-+~n"),
+	    io:format("|~p|~p|~p|~n", [maps:get(7, State, 7), maps:get(8, State, 8), maps:get(9, State, 9)]),
+	    io:format("+-+-+-+~n"),
+	    %io:format("~n"),
+	    %io:format("+-+-+-+~n"),
+	    %io:format("|~s|~s|~s|~n", [maps:get(1, State, E), maps:get(2, State, E), maps:get(3, State, E)]),
+	    %io:format("+-+-+-+\n"),
+	    %io:format("|~s|~s|~s|~n", [maps:get(4, State, E), maps:get(5, State, E), maps:get(6, State, E)]),
+	    %io:format("+-+-+-+~n"),
+	    %io:format("|~s|~s|~s|~n", [maps:get(7, State, E), maps:get(8, State, E), maps:get(9, State, E)]),
+	    %io:format("+-+-+-+~n"),
+	    Pid ! {received, State};
         {Pid, _} ->
             Pid ! {{fail, unrecognized_message}, State}
     end,
     run(New_State).
 
 
-check(_, Last_Position) when not is_integer(Last_Position) ->
-	{fail, not_an_int};
+%check(_, Last_Position) when not is_integer(Last_Position) ->
+%	{fail, not_an_int};
 check(Map, _Last_Position) when map_size(Map) == 0 ->
 	false;
 check(Map, Last_Position) ->
