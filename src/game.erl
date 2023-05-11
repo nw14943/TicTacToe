@@ -3,19 +3,35 @@
 -module(game).
 -export([start/1, execute/2, run/1]).
 -export([check_equal/2]).
--export([place/3, display/1]).
+-export([place/2, place/3, display/1]).
 
 place(Pid, Value, Position) ->
     execute(Pid, {place, {Value, Position}}),
     display(Pid),
-    Win = check(Pid, {check, Position}).
+    execute(Pid, {check, Position}).
+place(Pid, Position) ->
+    {Last, _} = execute(Pid, last),
+    %io:format("Last: ~p~n", [Last]),
+    if
+        Last == x -> 
+	    %io:format("X~n"),
+            execute(Pid, {place, {o, Position}});
+        Last == o ->
+	    %io:format("Y~n"),
+	    execute(Pid, {place, {x, Position}});
+	true ->
+	    fail
+    end,
+    display(Pid),
+    execute(Pid, {check, Position}).
+
 
 display(Pid) ->
     execute(Pid, display).
 
 % Start a process to execute an action
 start() ->
-    spawn(?MODULE,run, [#{}]).
+    spawn(?MODULE,run, [#{last => o}]).
 start(Name) ->
     register(Name, start()).
 
@@ -34,30 +50,41 @@ run(State) ->
     {_, New_State} = receive
         {Pid, list} ->
             Pid ! {received, State};
+        {Pid, {place, {Value, Position}}} when (Value == x) or (Value == 1) ->
+            Pid ! {received, maps:merge(State, #{Position => $x, last => Value})};
+        {Pid, {place, {Value, Position}}} when (Value == o) or (Value == 2) ->
+            Pid ! {received, maps:merge(State, #{Position => $o, last => Value})};
         {Pid, {place, {Value, Position}}} ->
             Pid ! {received, maps:merge(State, #{Position => Value})};
         {Pid, {state, Map}} ->
             Pid ! {received, Map};
-        {Pid, {check, Last_Position}} ->
+        {Pid, {check, Last_Position}} when (Last_Position > 0) and (Last_Position =< 9) ->
             Win = check(State, Last_Position),
             Pid ! {Win, maps:get(Last_Position, State)},
             {Win, State};
+        {Pid, {check, Last_Position}} ->
+	    Pid ! {{fail, Last_Position, out_of_range}, State};
+        {Pid, last} ->
+	    Pid ! {maps:get(last, State), State};
 	{Pid, display} ->
-	    %E = ' ',
-	    io:format("+-+-+-+~n"),
-	    io:format("|~p|~p|~p|~n", [maps:get(1, State, 1), maps:get(2, State, 2), maps:get(3, State, 3)]),
-	    io:format("+-+-+-+\n"),
-	    io:format("|~p|~p|~p|~n", [maps:get(4, State, 4), maps:get(5, State, 5), maps:get(6, State, 6)]),
-	    io:format("+-+-+-+~n"),
-	    io:format("|~p|~p|~p|~n", [maps:get(7, State, 7), maps:get(8, State, 8), maps:get(9, State, 9)]),
-	    io:format("+-+-+-+~n"),
+	    E = $ ,
+	    io:format("+-+-+-+~t +-+-+-+~n"),
+	    %io:format("|~p|~p|~p|~n", [maps:get(1, State, 1), maps:get(2, State, 2), maps:get(3, State, 3)]),
+	    io:format("|1|2|3|~t |~c|~c|~c|~n", [maps:get(1, State, E), maps:get(2, State, E), maps:get(3, State, E)]),
+	    io:format("+-+-+-+~t +-+-+-+~n"),
+	    %io:format("|~p|~p|~p|~n", [maps:get(4, State, 4), maps:get(5, State, 5), maps:get(6, State, 6)]),
+	    io:format("|4|5|6|~t |~c|~c|~c|~n", [maps:get(4, State, E), maps:get(5, State, E), maps:get(6, State, E)]),
+	    io:format("+-+-+-+~t +-+-+-+~n"),
+	    %io:format("|~p|~p|~p|~n", [maps:get(7, State, 7), maps:get(8, State, 8), maps:get(9, State, 9)]),
+	    io:format("|7|8|9|~t |~c|~c|~c|~n", [maps:get(7, State, E), maps:get(8, State, E), maps:get(9, State, E)]),
+	    io:format("+-+-+-+~t +-+-+-+~n"),
 	    %io:format("~n"),
 	    %io:format("+-+-+-+~n"),
-	    %io:format("|~s|~s|~s|~n", [maps:get(1, State, E), maps:get(2, State, E), maps:get(3, State, E)]),
+	    %io:format("|~c|~c|~c|~n", [maps:get(1, State, E), maps:get(2, State, E), maps:get(3, State, E)]),
 	    %io:format("+-+-+-+\n"),
-	    %io:format("|~s|~s|~s|~n", [maps:get(4, State, E), maps:get(5, State, E), maps:get(6, State, E)]),
+	    %io:format("|~c|~c|~c|~n", [maps:get(4, State, E), maps:get(5, State, E), maps:get(6, State, E)]),
 	    %io:format("+-+-+-+~n"),
-	    %io:format("|~s|~s|~s|~n", [maps:get(7, State, E), maps:get(8, State, E), maps:get(9, State, E)]),
+	    %io:format("|~c|~c|~c|~n", [maps:get(7, State, E), maps:get(8, State, E), maps:get(9, State, E)]),
 	    %io:format("+-+-+-+~n"),
 	    Pid ! {received, State};
         {Pid, _} ->
@@ -71,7 +98,8 @@ run(State) ->
 check(Map, _Last_Position) when map_size(Map) == 0 ->
 	false;
 check(Map, Last_Position) ->
-	Row = (Last_Position -1) div 3,
+	% io:format("~p~n", [Last_Position]),
+	Row = (Last_Position - 1) div 3,
 	Col = (Last_Position - 1) rem 3,
 	Case1 = check_equal(Map, [Last_Position, ((Col + 1)rem 3) + (Row * 3) + 1, ((Col + 2)rem 3) + (Row * 3) + 1]),
 	Case2 = check_equal(Map, [Last_Position, (Col + ((Row + 1)rem 3) * 3) + 1, (Col + ((Row + 2)rem 3) * 3) + 1]),
